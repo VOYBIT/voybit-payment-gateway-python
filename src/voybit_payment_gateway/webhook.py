@@ -1,30 +1,29 @@
-"""Verify a Voybit payment gateway webhook."""
+"""Verify a payment gateway webhook."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
 import json
+import re
 import time
 
 
 TOLERANCE_SECONDS = 5 * 60
+_HEX = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def verify_webhook(secret: str, delivery_id: str, timestamp: str, signature: str, raw_body: bytes, now: float | None = None) -> None:
-    if not secret or not delivery_id or not timestamp or not signature.startswith("v1="):
+    hex_signature = signature[3:] if signature.startswith("v1=") else ""
+    if not secret or not delivery_id or not timestamp.isdigit() or not _HEX.fullmatch(hex_signature):
         raise ValueError("webhook signature is invalid")
-    try:
-        supplied = bytes.fromhex(signature[3:])
-        seconds = int(timestamp)
-    except ValueError as error:
-        raise ValueError("webhook signature is invalid") from error
+    seconds = int(timestamp)
     current = time.time() if now is None else now
-    if len(supplied) != 32 or abs(int(current) - seconds) > TOLERANCE_SECONDS:
-        raise ValueError("webhook signature is invalid")
+    if abs(int(current) - seconds) > TOLERANCE_SECONDS:
+        raise ValueError("webhook timestamp is outside the 5 minute window")
     signed = delivery_id.encode() + b"." + timestamp.encode() + b"." + raw_body
     expected = hmac.new(secret.encode(), signed, hashlib.sha256).digest()
-    if not hmac.compare_digest(expected, supplied):
+    if not hmac.compare_digest(expected, bytes.fromhex(hex_signature)):
         raise ValueError("webhook signature does not match")
 
 

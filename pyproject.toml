@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "voybit-payment-gateway"
 version = "0.1.0"
-description = "Voybit payment gateway SDK for Python. Create a crypto payment and verify webhook signatures."
+description = "Create a Voybit payment and verify its webhook."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
