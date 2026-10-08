@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voybit-payment-gateway"
-version = "0.1.0"
-description = "Create a Voybit payment and verify its webhook."
+version = "0.2.0"
+description = "Create Voybit hosted checkout sessions or explicit-asset payments and verify webhooks."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

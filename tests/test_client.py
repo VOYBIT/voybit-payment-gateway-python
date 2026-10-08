@@ -79,6 +79,70 @@ class GatewayTest(unittest.TestCase):
         self.assertEqual(raised.exception.code, "asset_unavailable")
         self.assertEqual(calls["n"], 1)
 
+    def test_create_checkout_session(self):
+        seen = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                seen["path"] = self.path
+                seen["body"] = json.loads(self.rfile.read(length))
+                seen["idempotency"] = self.headers.get("Idempotency-Key")
+                payload = json.dumps({
+                    "session_id": "7155d76a-9f81-40eb-9233-878aac50eb20",
+                    "public_id": "nYVvXxsYGr5LZk8Dn7hU0Q",
+                    "status": "open",
+                    "checkout_url": "https://voybit.com/pay/nYVvXxsYGr5LZk8Dn7hU0Q",
+                }).encode()
+                self.send_response(201)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("X-Request-ID", "req_session_1")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, format, *args):
+                return
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        port = server.server_address[1]
+        created = Client("vb_test_example_secret", f"http://127.0.0.1:{port}/api/v1").create_checkout_session(
+            {
+                "fiat_amount": "25.00",
+                "fiat_currency": "USD",
+                "description": "Order 1001",
+                "metadata": {"order_id": "1001"},
+                "payment_window_seconds": 1800,
+                "asset_id": "must-not-be-sent",
+                "crypto_amount": "25",
+            },
+            "order:1001:attempt:1",
+        )
+        self.assertEqual(seen["path"], "/api/v1/gateway/checkout-sessions")
+        self.assertNotIn("asset_id", seen["body"])
+        self.assertNotIn("crypto_amount", seen["body"])
+        self.assertEqual(seen["body"]["fiat_amount"], "25.00")
+        self.assertEqual(created["checkout_session"]["status"], "open")
+        self.assertEqual(created["checkout_session"]["session_id"], "7155d76a-9f81-40eb-9233-878aac50eb20")
+        self.assertEqual(created["request_id"], "req_session_1")
+
+    def test_checkout_session_validates_inputs(self):
+        client = Client("vb_test_example_secret")
+        with self.assertRaisesRegex(ValueError, "positive decimal"):
+            client.create_checkout_session(
+                {"fiat_amount": "0", "fiat_currency": "USD"},
+                "order:1001:attempt:1",
+            )
+        with self.assertRaisesRegex(ValueError, "three-letter"):
+            client.create_checkout_session(
+                {"fiat_amount": "25.00", "fiat_currency": "usd"},
+                "order:1001:attempt:1",
+            )
+
     def test_webhook(self):
         raw = b'{"type":"payment.paid","status":"paid"}'
         now = 1_700_000_000
